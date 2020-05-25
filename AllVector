@@ -1,0 +1,125 @@
+class MemoryBuffer {
+private:
+    void* data;
+    size_t poolSize = 0;
+    int freeData = 0;
+    std::vector<unsigned int> objectSizes;
+    std::vector<unsigned int> padding;
+    std::vector<unsigned int> offsets;
+
+    void* getPointerToData(unsigned int index, void* D) {
+        char* d = (char*)D;
+        d += offsets[index];
+        return static_cast<void*>(d);
+    }
+
+    void* getPointerToData(unsigned int index) {
+        char* d = (char*)data;
+        d += offsets[index];
+        return static_cast<void*>(d);
+    }
+
+    void* getLastElementPointer() {
+        return getPointerToData(objectSizes.size() - 1);
+    }
+
+    unsigned int CalculatePadding(unsigned int TypeSize)
+    {      
+        if (TypeSize <= 4) {
+            return poolSize % 4 == 0 ? 0 : 4 - (poolSize % 4);
+        }
+        else if (TypeSize <= 8) {
+            return poolSize % 8 == 0 ? 0 : 8 - (poolSize % 8);
+        }
+        else {
+            return poolSize % 16 == 0 ? 0 : 16 - (poolSize % 16);
+        }
+    }
+
+    void allocateMemory()
+    {
+        data = new char[512];
+        freeData = 512;
+    }
+
+    void resize() {
+        void* d = new char[poolSize + 512];
+        char* a = (char*)d;
+        for (size_t i = 0; i < poolSize; i++)
+        {
+            *a = *(((char*)data) + i);
+            a += 1;
+        }
+        delete data;
+        data = d;
+        freeData = 512;
+    }
+
+public:
+
+    MemoryBuffer()
+    {
+        allocateMemory();
+    }
+
+    ~MemoryBuffer()
+    {
+        delete data;
+    }
+
+    template<class T>
+    void setData(unsigned int index, T d) {
+        if (index >= objectSizes.size()) {
+            throw(std::exception("Memory Buffer out of bounds!"));
+        }
+        if (objectSizes[index] != sizeof(T)) {
+            throw(std::exception("Wrong data type!"));
+        }
+
+        T* t = static_cast<T*>(getPointerToData(index));
+        *t = d;
+    }
+
+    template<class T>
+    T getData(unsigned int Index)
+    {
+        if (Index >= objectSizes.size()) {
+            throw(std::exception("Memory Buffer out of bounds!"));
+        }
+        if (objectSizes[Index] != sizeof(T)) {
+            throw(std::exception("Wrong data type!"));
+        }
+
+        return *static_cast<T*>(getPointerToData(Index));
+    }
+
+    template<class T>
+    void AddObject(T t) {
+        padding.push_back(CalculatePadding(sizeof(T)));
+        freeData -= sizeof(T) + padding[padding.size() - 1];
+        if (freeData <= 0) {
+            resize();
+        }
+        poolSize += sizeof(T) + padding[padding.size() - 1];
+        objectSizes.push_back(sizeof(T));
+        offsets.push_back(poolSize - sizeof(T));
+        setData<T>(objectSizes.size() - 1, t);
+    }
+
+    template<class T>
+    void AddObject() {
+        padding.push_back(CalculatePadding(sizeof(T)));
+        freeData -= sizeof(T) + padding[padding.size() - 1];
+        if (freeData <= 0) {
+            resize();
+        }
+        poolSize += sizeof(T) + padding[padding.size() - 1];
+        objectSizes.push_back(sizeof(T));
+        offsets.push_back(poolSize - sizeof(T));
+        setData<T>(objectSizes.size() - 1, T());
+    }
+
+    size_t GetRawAddress() {
+        return reinterpret_cast<size_t>(data);
+    }
+};
